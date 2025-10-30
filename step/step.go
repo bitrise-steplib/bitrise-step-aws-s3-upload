@@ -79,7 +79,7 @@ func (u Uploader) Run(config Config) error {
 	client := s3.NewFromConfig(defaultConfig)
 	uploader := manager.NewUploader(client)
 	prefix := strings.Trim(config.BucketPrefix, "/")
-	
+
 	for _, item := range items {
 		u.logger.Infof("Uploading file: %s", item.Path)
 
@@ -101,13 +101,15 @@ func (u Uploader) Run(config Config) error {
 			Body:        f,
 			ContentType: aws.String(item.ContentType),
 		})
+
+		if closeErr := f.Close(); closeErr != nil {
+			u.logger.Warnf("Failed to close file %s: %s", item.Path, closeErr)
+		}
+
 		if err != nil {
 			return fmt.Errorf("upload %s: %w", item.Path, err)
 		}
 
-		if err := f.Close(); err != nil {
-			u.logger.Warnf("Failed to close file %s: %s", item.Path, err)
-		}
 	}
 
 	return nil
