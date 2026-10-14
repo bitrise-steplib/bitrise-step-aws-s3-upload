@@ -3,6 +3,7 @@ package step
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/bitrise-io/go-steputils/v2/stepconf"
 	"github.com/bitrise-io/go-utils/v2/env"
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -95,12 +97,7 @@ func (u Uploader) Run(config Config) error {
 			key = path.Join(prefix, item.Key)
 		}
 
-		_, err = uploader.Upload(ctx, &s3.PutObjectInput{
-			Bucket:      aws.String(config.BucketName),
-			Key:         aws.String(key),
-			Body:        f,
-			ContentType: aws.String(item.ContentType),
-		})
+		_, err = uploader.Upload(ctx, newPutObjectInput(config, key, item.ContentType, f))
 
 		if closeErr := f.Close(); closeErr != nil {
 			u.logger.Warnf("Failed to close file %s: %s", item.Path, closeErr)
@@ -113,4 +110,26 @@ func (u Uploader) Run(config Config) error {
 	}
 
 	return nil
+}
+
+// newPutObjectInput builds the S3 PutObject request for a single file.
+//
+// The acl_control input was previously parsed but never sent to S3, so every
+// object ended up private regardless of the setting. The canned ACL is now
+// applied. "private" is S3's default, so it is left unset: this keeps uploads
+// working on buckets with ACLs disabled (Object Ownership = Bucket owner enforced),
+// which reject requests carrying most ACLs.
+func newPutObjectInput(config Config, key, contentType string, body io.Reader) *s3.PutObjectInput {
+	input := &s3.PutObjectInput{
+		Bucket:      aws.String(config.BucketName),
+		Key:         aws.String(key),
+		Body:        body,
+		ContentType: aws.String(contentType),
+	}
+
+	if config.AccessControl != "" && config.AccessControl != string(types.ObjectCannedACLPrivate) {
+		input.ACL = types.ObjectCannedACL(config.AccessControl)
+	}
+
+	return input
 }

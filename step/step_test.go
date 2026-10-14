@@ -3,6 +3,7 @@ package step
 import (
 	"testing"
 
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/bitrise-io/go-steputils/v2/stepconf"
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/bitrise-steplib/bitrise-step-aws-s3-upload/step/mocks"
@@ -40,4 +41,27 @@ func TestConfigParsing(t *testing.T) {
 	assert.Equal(t, config, receivedConfig)
 
 	mockEnvRepository.AssertExpectations(t)
+}
+
+func TestPutObjectInputACL(t *testing.T) {
+	tests := []struct {
+		name          string
+		accessControl string
+		expectedACL   types.ObjectCannedACL
+	}{
+		{name: "public-read is applied", accessControl: "public-read", expectedACL: types.ObjectCannedACLPublicRead},
+		{name: "private leaves ACL unset", accessControl: "private", expectedACL: ""},
+		{name: "empty leaves ACL unset", accessControl: "", expectedACL: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config := Config{BucketName: "bucket", AccessControl: tt.accessControl}
+			input := newPutObjectInput(config, "key", "application/octet-stream", nil)
+
+			assert.Equal(t, tt.expectedACL, input.ACL)
+			assert.Equal(t, "bucket", *input.Bucket)
+			assert.Equal(t, "key", *input.Key)
+		})
+	}
 }
